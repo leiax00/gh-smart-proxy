@@ -12,6 +12,7 @@
 
 # Local config (keep the sample, ignore real values)
 configs/config.yaml
+deploy/.env
 
 # OS
 .DS_Store

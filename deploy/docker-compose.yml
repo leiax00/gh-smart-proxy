@@ -1,18 +1,21 @@
+# 基础 / dev compose：镜像和 env 都从外部注入，不带网络（用默认）。
+# 部署时 CI 会从 Gitea 下载本文件，并叠加 docker-compose.override.yml 注入外部 self 网络。
 services:
   gh-smart-proxy:
+    image: "${IMAGE:-gh-smart-proxy:local}"
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    container_name: gh-smart-proxy
+    container_name: "${CONTAINER_NAME:-gh-smart-proxy}"
     restart: unless-stopped
     environment:
-      # 改成你自己的长随机 secret，不要用示例值
-      PROXY_SECRET: "change-me-long-random-secret"
-      ADDR: ":8080"
-      RATE_LIMIT: "120"
-      RATE_WINDOW_SECONDS: "60"
+      PROXY_SECRET: "${PROXY_SECRET:-}"
+      ADDR: "${ADDR:-:8080}"
+      RATE_LIMIT: "${RATE_LIMIT:-120}"
+      RATE_WINDOW_SECONDS: "${RATE_WINDOW_SECONDS:-60}"
+      TZ: "${TZ:-Asia/Shanghai}"
     expose:
       - "8080"
-    # 如果不用 NPM，临时测试可以打开 ports：
+    # 本地直连测试可打开（生产走外部 self 网络 + 反代）：
     # ports:
     #   - "8080:8080"
