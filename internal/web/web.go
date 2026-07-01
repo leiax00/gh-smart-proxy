@@ -70,7 +70,7 @@ var homeTemplate = template.Must(template.New("home").Parse(`<!doctype html>
   <main class="wrap">
     <section class="card">
       <h1>GitHub Proxy</h1>
-      <p>输入 GitHub 原始地址，生成带代理的地址。Secret 只在你的浏览器里使用，不会出现在页面源码里；留空表示服务端未启用鉴权(开放代理模式)。</p>
+      <p>输入 GitHub 原始地址，生成带代理的地址。Secret 只在你的浏览器里使用，不会出现在页面源码里；留空表示服务端未启用鉴权(开放代理模式)。Secret 会记住在本浏览器(localStorage)，下次自动填入。</p>
 
       <div class="row">
         <div>
@@ -97,6 +97,7 @@ var homeTemplate = template.Must(template.New("home").Parse(`<!doctype html>
         <button onclick="copyProxy()">复制代理地址</button>
         <button class="secondary" onclick="copyClone()">复制 git clone</button>
         <button class="secondary" onclick="openProxy()">打开 / 下载</button>
+        <button class="secondary" onclick="forgetSecret()">清除记住的 Secret</button>
       </div>
 
       <p id="msg" class="hint"></p>
@@ -156,6 +157,16 @@ async function copyText(t) {
 function copyProxy() { copyText($('out').textContent); }
 function copyClone() { copyText($('clone').textContent); }
 function openProxy() { const u = build(); if (u) window.open(u, '_blank', 'noopener'); }
+const SECRET_KEY = 'gh-proxy-secret';
+try { if (localStorage[SECRET_KEY]) $('secret').value = localStorage[SECRET_KEY]; } catch(e) {}
+$('secret').addEventListener('input', () => { try { localStorage[SECRET_KEY] = $('secret').value; } catch(e) {} });
+function forgetSecret() {
+  try { localStorage.removeItem(SECRET_KEY); } catch(e) {}
+  $('secret').value = '';
+  build();
+  $('msg').textContent = '已清除记住的 Secret';
+  $('msg').className = 'ok';
+}
 ['secret','base','raw'].forEach(id => $(id).addEventListener('input', build));
 build();
 </script>

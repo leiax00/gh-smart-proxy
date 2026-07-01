@@ -79,7 +79,7 @@ https://gh.example.com/
 - 一键复制 `git clone` 命令
 - 直接通过页面打开 / 下载文件
 
-注意：Secret 不会写进 HTML 页面源码，只在浏览器本地用于拼接 URL。
+注意：Secret 不会写进 HTML 页面源码，只在浏览器本地用于拼接 URL。输入后会保存在本浏览器的 localStorage 里，下次自动填入（可用页面上的「清除记住的 Secret」按钮清除）。
 
 ## 命令行使用
 
