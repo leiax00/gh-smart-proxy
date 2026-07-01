@@ -202,6 +202,68 @@ Do not enable Basic Auth in front of this app if you want Git clients and downlo
 ## Cloudflare Cache Suggestions
 
 - Bypass cache for `/info/refs`, `git-upload-pack`, and `git-receive-pack`.
-- Cache everything for `/releases/download/`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, and `release-assets.githubusercontent.com`.
+- Cache GitHub downloads such as `/releases/download/`, `/archive/`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, and `github-releases.githubusercontent.com`.
 
 The proxy itself sets conservative `Cache-Control` and `CDN-Cache-Control` headers, but the final behavior depends on your CDN rules.
+
+Create these Cloudflare Cache Rules in order. Replace `gh.example.com` with your proxy hostname.
+
+### 1. Bypass Git Smart HTTP
+
+Expression:
+
+```text
+(http.host eq "gh.example.com" and (
+  http.request.uri.path contains "/info/refs" or
+  http.request.uri.path contains "git-upload-pack" or
+  http.request.uri.path contains "git-receive-pack"
+))
+```
+
+Action:
+
+```text
+Cache eligibility: Bypass cache
+```
+
+### 2. Cache GitHub Download Assets
+
+Expression:
+
+```text
+(http.host eq "gh.example.com" and (
+  http.request.uri.path contains "/releases/download/" or
+  http.request.uri.path contains "/archive/" or
+  http.request.uri.path contains "raw.githubusercontent.com" or
+  http.request.uri.path contains "codeload.github.com" or
+  http.request.uri.path contains "objects.githubusercontent.com" or
+  http.request.uri.path contains "release-assets.githubusercontent.com" or
+  http.request.uri.path contains "github-releases.githubusercontent.com"
+))
+```
+
+Action:
+
+```text
+Cache eligibility: Eligible for cache
+Edge TTL: 7 days
+Browser TTL: Respect origin header
+```
+
+### 3. Bypass Other Proxy Traffic
+
+This rule is optional, but useful if the proxy host is dedicated to this service.
+
+Expression:
+
+```text
+(http.host eq "gh.example.com")
+```
+
+Action:
+
+```text
+Cache eligibility: Bypass cache
+```
+
+If you use a secret path such as `https://gh.example.com/secret-token/https://github.com/...`, you do not need to match the secret. Match the GitHub path fragments after it.

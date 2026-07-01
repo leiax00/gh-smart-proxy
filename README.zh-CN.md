@@ -156,4 +156,66 @@ Proxy Host:
 ## Cloudflare 缓存建议
 
 - `/info/refs`、`git-upload-pack`：Bypass Cache
-- `/releases/download/`、`raw.githubusercontent.com`、`codeload.github.com`、`objects.githubusercontent.com`：Cache Everything
+- `/releases/download/`、`/archive/`、`raw.githubusercontent.com`、`codeload.github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`、`github-releases.githubusercontent.com`：Cache Everything
+
+建议在 Cloudflare Dashboard 里按顺序创建以下 Cache Rules。把 `gh.example.com` 换成你的代理域名。
+
+### 1. Bypass Git Smart HTTP
+
+匹配表达式：
+
+```text
+(http.host eq "gh.example.com" and (
+  http.request.uri.path contains "/info/refs" or
+  http.request.uri.path contains "git-upload-pack" or
+  http.request.uri.path contains "git-receive-pack"
+))
+```
+
+动作：
+
+```text
+Cache eligibility: Bypass cache
+```
+
+### 2. Cache GitHub Download Assets
+
+匹配表达式：
+
+```text
+(http.host eq "gh.example.com" and (
+  http.request.uri.path contains "/releases/download/" or
+  http.request.uri.path contains "/archive/" or
+  http.request.uri.path contains "raw.githubusercontent.com" or
+  http.request.uri.path contains "codeload.github.com" or
+  http.request.uri.path contains "objects.githubusercontent.com" or
+  http.request.uri.path contains "release-assets.githubusercontent.com" or
+  http.request.uri.path contains "github-releases.githubusercontent.com"
+))
+```
+
+动作：
+
+```text
+Cache eligibility: Eligible for cache
+Edge TTL: 7 days
+Browser TTL: Respect origin header
+```
+
+### 3. Bypass Other Proxy Traffic
+
+这条可选。如果这个域名只用于代理服务，建议加上。
+
+匹配表达式：
+
+```text
+(http.host eq "gh.example.com")
+```
+
+动作：
+
+```text
+Cache eligibility: Bypass cache
+```
+
+如果你使用 secret path，例如 `https://gh.example.com/secret-token/https://github.com/...`，不需要专门匹配 secret，直接匹配后面的 GitHub 路径片段即可。
