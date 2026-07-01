@@ -90,6 +90,8 @@ jobs:
           tags: ${{ vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}/${{ github.repository }}:latest
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            USE_MIRROR=${{ vars.USE_MIRROR || 'true' }}
           cache-from: type=registry,ref=${{ vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}/${{ github.repository }}:buildcache
           cache-to: type=registry,ref=${{ vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}/${{ github.repository }}:buildcache,mode=max
 
