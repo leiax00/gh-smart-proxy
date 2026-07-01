@@ -1,157 +1,207 @@
 # gh-smart-proxy
 
-一个轻量 GitHub HTTPS 代理：URL Secret 鉴权、GitHub 域名白名单、清理 Authorization、缓存头策略、简单每 IP 限流，并内置一个类似 gh-proxy 的简单 Web 页面。
+English | [简体中文](README.zh-CN.md)
 
-## 启动
+A lightweight GitHub HTTPS proxy with URL-secret authentication, a GitHub host allow-list, credential header stripping, cache-friendly response headers, simple per-IP rate limiting, and a built-in web page similar to `gh-proxy`.
 
-本地用 docker（compose 不带网络，用默认；要从宿主机直连，打开 compose 里注释的 `ports`）：
+The public URL format is:
 
-```bash
-PROXY_SECRET=你的长随机secret docker compose -f deploy/docker-compose.yml up -d --build
+```text
+https://gh.example.com/<PROXY_SECRET>/https://github.com/owner/repo/...
 ```
 
-部署文件（`Dockerfile`、`docker-compose.yml`）都在 `deploy/` 下，与源码分开；compose 的镜像 / env 都从外部注入（见 `.env.example`），网络由 CI 部署时叠加。不用 docker 可直接：
+Leaving `PROXY_SECRET` empty enables open-proxy mode:
 
-```bash
-PROXY_SECRET=你的长随机secret go run ./cmd/gh-smart-proxy
+```text
+https://gh.example.com/https://github.com/owner/repo/...
 ```
 
-## 配置
+## Features
 
-| 环境变量 | 默认 | 说明 |
+- Proxies GitHub releases, archives, raw files, gists, and Git smart HTTP traffic.
+- Keeps a secret path segment in front of proxied URLs to avoid exposing a public open proxy by default.
+- Follows GitHub release asset redirects server-side, like `hunshcn/gh-proxy`, so clients receive the final file response directly.
+- Rewrites proxyable GitHub redirects back through the proxy prefix.
+- Strips `Authorization`, `Proxy-Authorization`, `Cookie`, and hop-by-hop headers before forwarding to GitHub.
+- Adds cache headers suitable for Cloudflare or another CDN in front of the service.
+- Includes a small web UI for generating proxy, clone, and jsDelivr links.
+
+## Quick Start
+
+With Docker Compose:
+
+```bash
+PROXY_SECRET=your-long-random-secret docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+Without Docker:
+
+```bash
+PROXY_SECRET=your-long-random-secret go run ./cmd/gh-smart-proxy
+```
+
+The deployment files are under `deploy/`. The image and runtime environment are injected externally, and the production network is attached by the CI deployment flow.
+
+## Configuration
+
+| Environment Variable | Default | Description |
 |---|---|---|
-| `PROXY_SECRET` | 可选 | URL 鉴权 secret，同时作为前缀出现在代理 URL 里；留空=开放代理模式 |
-| `ADDR` | `:8080` | 监听地址 |
-| `RATE_LIMIT` | `120` | 单个 IP 在窗口内最大请求数 |
-| `RATE_WINDOW_SECONDS` | `60` | 限流窗口（秒） |
-| `ALLOWED_HOSTS` | 内置默认 | 逗号分隔的上游域名白名单；留空=用内置 GitHub 列表 |
+| `PROXY_SECRET` | optional | URL authentication secret. It also becomes the first path segment in proxy URLs. Empty means open-proxy mode. |
+| `ADDR` | `:8080` | Listen address. |
+| `RATE_LIMIT` | `120` | Maximum requests per IP within the rate window. |
+| `RATE_WINDOW_SECONDS` | `60` | Rate-limit window in seconds. |
+| `ALLOWED_HOSTS` | built-in GitHub list | Comma-separated upstream host allow-list. Empty keeps the built-in GitHub hosts. |
 
-也可以在编译时把默认 secret 烧进二进制（运行时 `PROXY_SECRET` 仍优先）：
+You can also bake a default secret into the binary at build time. Runtime `PROXY_SECRET` still takes precedence:
 
 ```bash
 go build -ldflags="-X gh-smart-proxy/internal/config.Secret=your-secret" ./cmd/gh-smart-proxy
 ```
 
-### 配置文件（可选）
+### Optional Config File
 
-也可以用 YAML 文件管理配置，通过 `CONFIG_PATH` 指向它（模板见 `configs/config.sample.yaml`）：
+Use `CONFIG_PATH` to load a YAML config file. A sample is available at `configs/config.sample.yaml`:
 
 ```bash
 cp configs/config.sample.yaml configs/config.yaml
-CONFIG_PATH=configs/config.yaml PROXY_SECRET=覆盖值 go run ./cmd/gh-smart-proxy
+CONFIG_PATH=configs/config.yaml PROXY_SECRET=override-value go run ./cmd/gh-smart-proxy
 ```
 
-优先级：**环境变量 > 配置文件 > 编译时默认 > 内置默认**。`configs/config.yaml` 已在 `.gitignore` 里。
+Precedence:
 
-`allowed_hosts`（或环境变量 `ALLOWED_HOSTS`，逗号分隔）会**整体替换**默认 GitHub 白名单（不是追加），常用于加上自托管 GitHub Enterprise 域名。留空则保持内置默认列表。
-
-### 开放代理模式
-
-`PROXY_SECRET` 留空时不鉴权，代理 URL 变成 `https://你的域名/https://github.com/...`，启动会打印警告。仅适合本地 / 内网，或前端已有 Cloudflare / NPM 保护时使用——否则任何人都能借你的服务器烧带宽。
-
-## 项目结构
-
-```
-├── cmd/gh-smart-proxy/     # 入口：只做配置加载 + 启动
-├── internal/
-│   ├── config/             # 配置：Config + Load()
-│   ├── httputil/           # 共享 HTTP 工具（ClientIP / Scheme / StripHopHeaders）
-│   ├── proxy/              # 反向代理：鉴权、目标解析、缓存头
-│   ├── ratelimit/          # 每 IP 限流
-│   ├── server/             # 组装路由 + *http.Server
-│   └── web/                # 内置 Web 页面
-├── deploy/                 # Dockerfile + docker-compose.yml
-└── go.mod
+```text
+environment variables > config file > link-time default > built-in defaults
 ```
 
-## CI/CD 部署（Gitea Actions）
+`configs/config.yaml` is ignored by git.
 
-参考 `reference-project`：runner 构建镜像推到 Gitea 内置 registry，再 SSH 到服务器用 `docker compose` 拉取重启。配置见 `.gitea/workflows/ci.yml`。
+`allowed_hosts` in the config file, or `ALLOWED_HOSTS` in the environment, replaces the default allow-list as a whole. It is not appended. This is useful when adding GitHub Enterprise hosts. Leave it empty to keep the built-in GitHub list.
 
-- 手动触发（`workflow_dispatch`，可勾选 `run_build` / `run_deploy`）；先跑 `check-changes` 比对上次镜像的 commit。
-- 镜像 tag `:latest`，带 `org.opencontainers.image.revision` 标签；构建用 buildx + registry 缓存（`:buildcache`）。
-- 仓库里的 `deploy/docker-compose.yml` **不带网络**（dev 用默认）；CI 部署时从 Gitea API 下载它，并写入 `docker-compose.override.yml` 注入外部 `self` 网络——compose 自动合并两者，无需手动同步 compose。
+### Open-Proxy Mode
 
-### 1. 前置
+When `PROXY_SECRET` is empty, authentication is disabled and proxy URLs become:
 
-- Gitea 已开启 Actions，且有带 Docker 的 runner（`runs-on: ubuntu-latest`）。
-- 部署服务器装了 Docker；外部网络 `self` 由 CI 自动创建。
+```text
+https://gh.example.com/https://github.com/owner/repo/...
+```
 
-### 2. 仓库 Variables（Settings → Actions → Variables）
+Only use this locally, on a private network, or behind trusted protection such as Cloudflare or Nginx Proxy Manager. Otherwise anyone can use your server as a bandwidth relay.
 
-| Variable | 默认 | 说明 |
-|---|---|---|
-| `REGISTRY_HOST` | `<REGISTRY_HOST>` | Gitea 外部域名（registry 同址；非标准端口要带上） |
-| `GITEA_HOST` | 同 `REGISTRY_HOST` | 下载 compose 用的 Gitea API 地址（通常与 registry 同域，不同才设） |
-| `DEPLOY_HOST` | — | 部署服务器地址（必填） |
-| `DEPLOY_SSH_USER` | `example-user` | 部署 SSH 用户 |
-| `DEPLOY_SSH_PORT` | `22` | 部署 SSH 端口 |
-| `CONTAINER_NAME` | `gh-smart-proxy` | 容器名（也决定部署目录名） |
-| `DEPLOY_DIR` | `<DEPLOY_BASE_DIR>/<CONTAINER_NAME>` | 服务器上 compose 所在目录 |
-| `DOCKERHUB_MIRROR` | `<DOCKERHUB_MIRROR>` | 构建时拉基础镜像用的 Docker Hub 镜像 |
+## Usage
 
-### 3. 仓库 Secrets
-
-| Secret | 说明 |
-|---|---|
-| `CI_TOKEN` | Gitea 访问令牌，需 `package:write`（推）+ `package:read`（服务器拉）+ `repo`（下载 compose）；用户名取 `github.repository_owner` |
-| `SSH_PRIVATE_KEY` | 能登录部署服务器的私钥（整个文件内容） |
-| `PROXY_SECRET` | URL 鉴权 secret（留空 = 开放代理模式）；CI 部署时注入容器，无需在服务器放 `.env` |
-
-### 4. 一次性服务器准备
+Clone a repository:
 
 ```bash
-# 登录 Gitea registry（用 CI_TOKEN）
-echo "<CI_TOKEN>" | docker login <REGISTRY_HOST> -u example-user --password-stdin
-
-# 部署目录（compose 由 CI 下载、self 网络由 CI 装配、PROXY_SECRET 由 CI 从 Gitea secret 注入）
-mkdir -p <DEPLOY_BASE_DIR>/gh-smart-proxy
+git clone https://gh.example.com/<PROXY_SECRET>/https://github.com/hunshcn/gh-proxy.git
 ```
 
-> 不用在服务器放 `.env`。`PROXY_SECRET` 走 Gitea secret（见上表），`IMAGE` 由 CI 自动算出，`ADDR`/`RATE_*` 用 compose 默认值。想覆盖默认值才在 `$DEPLOY_DIR/.env` 里加。
+Download an archive:
 
-### 5. 部署
+```bash
+curl -I https://gh.example.com/<PROXY_SECRET>/https://github.com/hunshcn/gh-proxy/archive/refs/heads/main.zip
+```
 
-Gitea 仓库 → Actions → `CI` → Run workflow。流程构建推送 `:latest`，再 SSH 到 `$DEPLOY_DIR`：从 Gitea API 下载 `docker-compose.yml` + 写入 `docker-compose.override.yml`（注入 `self` 网络），把 `IMAGE` 和 `PROXY_SECRET`（Gitea secret）作为环境变量注入 → `docker compose pull && up -d`。
+Download a release asset:
 
-## Web 页面
+```bash
+curl -L -o ax-linux-x86_64 \
+  https://gh.example.com/<PROXY_SECRET>/https://github.com/example-user/ax-cli/releases/download/v0.1.0/ax-linux-x86_64
+```
 
-浏览器打开：
+## Web UI
+
+Open the service root in a browser:
 
 ```text
 https://gh.example.com/
 ```
 
-页面功能：
+The page can:
 
-- 输入原始 GitHub URL
-- 输入你的 `PROXY_SECRET`
-- 自动生成代理 URL
-- 一键复制代理地址
-- 一键复制 `git clone` 命令
-- 直接通过页面打开 / 下载文件
+- Accept an original GitHub URL.
+- Accept your `PROXY_SECRET` locally in the browser.
+- Generate the proxied URL.
+- Generate a `git clone` command for repository URLs.
+- Generate jsDelivr CDN URLs for supported raw/blob/tree file URLs.
+- Open or download through the proxy.
 
-注意：Secret 不会写进 HTML 页面源码，只在浏览器本地用于拼接 URL。输入后会保存在本浏览器的 localStorage 里，下次自动填入（可用页面上的「清除记住的 Secret」按钮清除）。
+The secret is never rendered into the HTML source by the server. If entered, it is stored only in the browser's `localStorage` so the page can remember it next time.
 
-## 命令行使用
+## Project Layout
+
+```text
+├── cmd/gh-smart-proxy/     # Entrypoint: load config and start the server
+├── internal/
+│   ├── config/             # Config resolution: Config + Load()
+│   ├── httputil/           # Shared HTTP helpers
+│   ├── proxy/              # Reverse proxy, auth, target parsing, redirects, cache headers
+│   ├── ratelimit/          # Per-IP rate limiting
+│   ├── server/             # Routes and *http.Server assembly
+│   └── web/                # Built-in web page
+├── deploy/                 # Dockerfile and docker-compose.yml
+└── go.mod
+```
+
+## CI/CD Deployment
+
+The repository includes a Gitea-compatible GitHub Actions workflow at `.github/workflows/ci.yml`.
+
+The workflow can:
+
+- Build the image with buildx and registry cache.
+- Push `:latest` to the Gitea package registry.
+- SSH into the deployment host.
+- Download `docker-compose.yml` from the Gitea API.
+- Write a `docker-compose.override.yml` that attaches the external `self` network.
+- Inject `IMAGE` and `PROXY_SECRET` from Gitea Actions variables/secrets.
+- Run `docker compose pull && docker compose up -d`.
+
+### Repository Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `REGISTRY_HOST` | `<REGISTRY_HOST>` | External Gitea host. The registry uses the same host unless configured otherwise. |
+| `GITEA_HOST` | same as `REGISTRY_HOST` | Gitea API host for downloading compose files. |
+| `DEPLOY_HOST` | required | Deployment server hostname or IP. |
+| `DEPLOY_SSH_USER` | `example-user` | SSH user. |
+| `DEPLOY_SSH_PORT` | `22` | SSH port. |
+| `CONTAINER_NAME` | `gh-smart-proxy` | Container name and default deployment directory suffix. |
+| `DEPLOY_DIR` | `<DEPLOY_BASE_DIR>/<CONTAINER_NAME>` | Directory on the deployment server. |
+| `DOCKERHUB_MIRROR` | `<DOCKERHUB_MIRROR>` | Docker Hub mirror used during image builds. |
+
+### Repository Secrets
+
+| Secret | Description |
+|---|---|
+| `CI_TOKEN` | Gitea token with `package:write`, `package:read`, and `repo` permissions. |
+| `SSH_PRIVATE_KEY` | Private key for the deployment server. |
+| `PROXY_SECRET` | URL authentication secret injected into the deployed container. Empty means open-proxy mode. |
+
+### One-Time Server Setup
 
 ```bash
-git clone https://gh.example.com/<PROXY_SECRET>/https://github.com/hunshcn/gh-proxy.git
-curl -I https://gh.example.com/<PROXY_SECRET>/https://github.com/hunshcn/gh-proxy/archive/refs/heads/main.zip
+echo "<CI_TOKEN>" | docker login <REGISTRY_HOST> -u example-user --password-stdin
+mkdir -p <DEPLOY_BASE_DIR>/gh-smart-proxy
 ```
+
+You do not need to place a `.env` file on the server unless you want to override defaults manually.
 
 ## Nginx Proxy Manager
 
-Proxy Host:
+Proxy Host settings:
 
-- Forward Hostname/IP: `gh-smart-proxy`
-- Forward Port: `8080`
-- Scheme: `http`
-- SSL: 开启 Let's Encrypt / Force SSL
+| Setting | Value |
+|---|---|
+| Forward Hostname/IP | `gh-smart-proxy` |
+| Forward Port | `8080` |
+| Scheme | `http` |
+| SSL | Enable Let's Encrypt and Force SSL |
 
-不要再开 Basic Auth。
+Do not enable Basic Auth in front of this app if you want Git clients and download tools to work normally.
 
-## Cloudflare 缓存建议
+## Cloudflare Cache Suggestions
 
-- `/info/refs`、`git-upload-pack`：Bypass Cache
-- `/releases/download/`、`raw.githubusercontent.com`、`codeload.github.com`、`objects.githubusercontent.com`：Cache Everything
+- Bypass cache for `/info/refs`, `git-upload-pack`, and `git-receive-pack`.
+- Cache everything for `/releases/download/`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, and `release-assets.githubusercontent.com`.
+
+The proxy itself sets conservative `Cache-Control` and `CDN-Cache-Control` headers, but the final behavior depends on your CDN rules.

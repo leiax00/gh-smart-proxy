@@ -1,6 +1,6 @@
 name: CI
 
-# 参考 reference-project 的 .gitea/workflows/ci.yml：手动触发，
+# 参考 reference-project 的 .github/workflows/ci.yml：手动触发，
 # runner 构建镜像推到 Gitea 内置 registry，再 SSH 到服务器 docker run 重启。
 on:
   workflow_dispatch:
