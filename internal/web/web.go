@@ -3,6 +3,7 @@
 package web
 
 import (
+	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
@@ -11,17 +12,27 @@ import (
 )
 
 type pageData struct {
-	BaseURL string
+	BaseURL      string
+	AllowedHosts template.JS
 }
 
 // Handler returns an http.Handler that renders the landing page. The page's
-// base URL is derived from the incoming request so generated proxy URLs point
-// back at the public origin.
-func Handler() http.Handler {
+// base URL is derived from the incoming request, and allowedHosts is injected
+// so client-side validation matches the server's allow-list.
+func Handler(allowedHosts []string) http.Handler {
+	allowedJS, err := json.Marshal(allowedHosts)
+	if err != nil || len(allowedHosts) == 0 {
+		allowedJS = []byte("[]")
+	}
+	allowed := template.JS(allowedJS)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		if err := homeTemplate.Execute(w, pageData{BaseURL: httputil.PublicBaseURL(r)}); err != nil {
+		if err := homeTemplate.Execute(w, pageData{
+			BaseURL:      httputil.PublicBaseURL(r),
+			AllowedHosts: allowed,
+		}); err != nil {
 			log.Printf("render home: %v", err)
 		}
 	})
@@ -59,7 +70,7 @@ var homeTemplate = template.Must(template.New("home").Parse(`<!doctype html>
   <main class="wrap">
     <section class="card">
       <h1>GitHub Proxy</h1>
-      <p>输入 GitHub 原始地址，生成带代理的地址。Secret 只在你的浏览器里使用，不会出现在页面源码里。</p>
+      <p>输入 GitHub 原始地址，生成带代理的地址。Secret 只在你的浏览器里使用，不会出现在页面源码里；留空表示服务端未启用鉴权(开放代理模式)。</p>
 
       <div class="row">
         <div>
@@ -93,11 +104,7 @@ var homeTemplate = template.Must(template.New("home").Parse(`<!doctype html>
     </section>
   </main>
 <script>
-const allowed = new Set([
-  'github.com', 'www.github.com', 'raw.githubusercontent.com', 'gist.githubusercontent.com',
-  'codeload.github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com',
-  'github-releases.githubusercontent.com'
-]);
+const allowed = new Set({{.AllowedHosts}});
 const $ = id => document.getElementById(id);
 function cleanBase(v) { return v.replace(/\/+$/, ''); }
 function build() {
@@ -107,7 +114,7 @@ function build() {
   const msg = $('msg');
   msg.textContent = '';
   msg.className = 'hint';
-  if (!secret || !base || !raw) {
+  if (!base || !raw) {
     $('out').textContent = '等待输入...';
     $('clone').textContent = '等待输入仓库地址...';
     return '';
@@ -127,7 +134,8 @@ function build() {
     msg.className = 'bad';
     return '';
   }
-  const proxied = base + '/' + encodeURIComponent(secret) + '/' + raw;
+  const secretPart = secret ? '/' + encodeURIComponent(secret) : '';
+  const proxied = base + secretPart + '/' + raw;
   $('out').textContent = proxied;
   if (u.hostname === 'github.com' || u.hostname === 'www.github.com') {
     let cloneURL = proxied;

@@ -18,16 +18,34 @@ PROXY_SECRET=你的长随机secret go run ./cmd/gh-smart-proxy
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
-| `PROXY_SECRET` | 必填 | URL 鉴权 secret，同时作为前缀出现在代理 URL 里 |
+| `PROXY_SECRET` | 可选 | URL 鉴权 secret，同时作为前缀出现在代理 URL 里；留空=开放代理模式 |
 | `ADDR` | `:8080` | 监听地址 |
 | `RATE_LIMIT` | `120` | 单个 IP 在窗口内最大请求数 |
 | `RATE_WINDOW_SECONDS` | `60` | 限流窗口（秒） |
+| `ALLOWED_HOSTS` | 内置默认 | 逗号分隔的上游域名白名单；留空=用内置 GitHub 列表 |
 
 也可以在编译时把默认 secret 烧进二进制（运行时 `PROXY_SECRET` 仍优先）：
 
 ```bash
 go build -ldflags="-X gh-smart-proxy/internal/config.Secret=your-secret" ./cmd/gh-smart-proxy
 ```
+
+### 配置文件（可选）
+
+也可以用 YAML 文件管理配置，通过 `CONFIG_PATH` 指向它（模板见 `configs/config.sample.yaml`）：
+
+```bash
+cp configs/config.sample.yaml configs/config.yaml
+CONFIG_PATH=configs/config.yaml PROXY_SECRET=覆盖值 go run ./cmd/gh-smart-proxy
+```
+
+优先级：**环境变量 > 配置文件 > 编译时默认 > 内置默认**。`configs/config.yaml` 已在 `.gitignore` 里。
+
+`allowed_hosts`（或环境变量 `ALLOWED_HOSTS`，逗号分隔）会**整体替换**默认 GitHub 白名单（不是追加），常用于加上自托管 GitHub Enterprise 域名。留空则保持内置默认列表。
+
+### 开放代理模式
+
+`PROXY_SECRET` 留空时不鉴权，代理 URL 变成 `https://你的域名/https://github.com/...`，启动会打印警告。仅适合本地 / 内网，或前端已有 Cloudflare / NPM 保护时使用——否则任何人都能借你的服务器烧带宽。
 
 ## 项目结构
 

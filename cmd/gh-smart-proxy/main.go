@@ -1,6 +1,6 @@
 // Command gh-smart-proxy is a lightweight HTTPS reverse proxy for GitHub with
-// URL-secret authentication, a host allow-list, per-IP rate limiting, and a
-// built-in landing page.
+// optional URL-secret authentication, a host allow-list, per-IP rate limiting,
+// and a built-in landing page.
 package main
 
 import (
@@ -11,9 +11,12 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
 	if cfg.Secret == "" {
-		log.Fatal("secret is required")
+		log.Printf("WARNING: PROXY_SECRET is empty — running in open-proxy mode (no URL auth). Only safe behind a trusted frontend or on a private network.")
 	}
 
 	srv := server.New(cfg)

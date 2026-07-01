@@ -1,0 +1,32 @@
+# gh-smart-proxy 配置示例
+# 复制为 config.yaml 后按需修改，运行时用 CONFIG_PATH 指向它：
+#   CONFIG_PATH=configs/config.yaml go run ./cmd/gh-smart-proxy
+# 优先级：环境变量 > 本文件 > 编译时默认(-ldflags) > 内置默认。
+
+# URL 鉴权 secret，同时作为代理 URL 的前缀。
+# 留空 = 开放代理模式（启动会打印警告），任何人都能用你的代理，仅在受控环境使用。
+secret: ""
+
+# 监听地址
+addr: ":8080"
+
+# 单个 IP 在窗口内最大请求数
+rate_limit: 120
+
+# 限流窗口（秒）
+rate_window_seconds: 60
+
+# 上游域名白名单（SSRF 防护）。不设置则用内置 GitHub 默认列表。
+# 设置后会【整体替换】默认列表，不是追加。如需自托管 GitHub Enterprise，
+# 取消注释并加上你的域名（建议同时保留需要的 GitHub 默认域名）。
+# 环境变量 ALLOWED_HOSTS（逗号分隔）优先于此处。
+# allowed_hosts:
+#   - github.com
+#   - www.github.com
+#   - raw.githubusercontent.com
+#   - gist.githubusercontent.com
+#   - codeload.github.com
+#   - objects.githubusercontent.com
+#   - release-assets.githubusercontent.com
+#   - github-releases.githubusercontent.com
+#   - gh.example.com   # 你的 GitHub Enterprise

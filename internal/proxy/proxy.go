@@ -19,21 +19,15 @@ import (
 	"gh-smart-proxy/internal/httputil"
 )
 
-// allowedHosts are the upstream hosts the proxy is willing to forward to.
-var allowedHosts = map[string]bool{
-	"github.com":                            true,
-	"www.github.com":                        true,
-	"raw.githubusercontent.com":             true,
-	"gist.githubusercontent.com":            true,
-	"codeload.github.com":                   true,
-	"objects.githubusercontent.com":         true,
-	"release-assets.githubusercontent.com":  true,
-	"github-releases.githubusercontent.com": true,
-}
-
 // New returns an http.Handler that authenticates the request against secret,
-// parses the upstream target from the URL, and reverse-proxies it to GitHub.
-func New(secret string) http.Handler {
+// parses the upstream target from the URL, and reverse-proxies it to a host in
+// allowedHosts.
+func New(secret string, allowedHosts []string) http.Handler {
+	allowed := make(map[string]bool, len(allowedHosts))
+	for _, h := range allowedHosts {
+		allowed[strings.ToLower(strings.TrimSpace(h))] = true
+	}
+
 	rp := &revproxy.ReverseProxy{
 		Director: func(r *http.Request) {},
 		ModifyResponse: func(resp *http.Response) error {
@@ -58,7 +52,7 @@ func New(secret string) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		target, err := parseTarget(r, secret)
+		target, err := parseTarget(r, secret, allowed)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
@@ -86,8 +80,13 @@ func New(secret string) http.Handler {
 
 // parseTarget validates the request against the secret prefix and parses the
 // upstream https:// URL, enforcing the host allow-list.
-func parseTarget(r *http.Request, secret string) (*url.URL, error) {
-	prefix := "/" + secret + "/"
+func parseTarget(r *http.Request, secret string, allowed map[string]bool) (*url.URL, error) {
+	// An empty secret means open-proxy mode: the target is the whole path
+	// after the leading slash (/<target>) instead of /<secret>/<target>.
+	prefix := "/"
+	if secret != "" {
+		prefix = "/" + secret + "/"
+	}
 	if !strings.HasPrefix(r.URL.EscapedPath(), prefix) && !strings.HasPrefix(r.URL.Path, prefix) {
 		return nil, errors.New("forbidden")
 	}
@@ -108,7 +107,7 @@ func parseTarget(r *http.Request, secret string) (*url.URL, error) {
 	target.RawQuery = r.URL.RawQuery
 
 	host := strings.ToLower(target.Hostname())
-	if !allowedHosts[host] {
+	if !allowed[host] {
 		return nil, fmt.Errorf("host not allowed: %s", host)
 	}
 	return target, nil

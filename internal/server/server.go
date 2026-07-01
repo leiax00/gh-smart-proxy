@@ -17,8 +17,8 @@ import (
 // New builds the HTTP server from the resolved configuration.
 func New(cfg config.Config) *http.Server {
 	lim := ratelimit.New(cfg.RateLimit, cfg.RateWindow)
-	proxyHandler := proxy.New(cfg.Secret)
-	home := web.Handler()
+	proxyHandler := proxy.New(cfg.Secret, cfg.AllowedHosts)
+	home := web.Handler(cfg.AllowedHosts)
 
 	// Routing is an explicit switch rather than ServeMux patterns because the
 	// proxy path is /<secret>/<https-url> and must be matched by prefix.
