@@ -105,7 +105,7 @@ Download a release asset:
 
 ```bash
 curl -L -o ax-linux-x86_64 \
-  https://gh.example.com/<PROXY_SECRET>/https://github.com/example-user/ax-cli/releases/download/v0.1.0/ax-linux-x86_64
+  https://gh.example.com/<PROXY_SECRET>/https://github.com/owner/repo/releases/download/v1.0.0/file.tar.gz
 ```
 
 ## Web UI
@@ -160,14 +160,14 @@ The workflow can:
 
 | Variable | Default | Description |
 |---|---|---|
-| `REGISTRY_HOST` | `<REGISTRY_HOST>` | External Gitea host. The registry uses the same host unless configured otherwise. |
+| `REGISTRY_HOST` | required | Container registry host, configured in repository Variables. |
 | `GITEA_HOST` | same as `REGISTRY_HOST` | Gitea API host for downloading compose files. |
 | `DEPLOY_HOST` | required | Deployment server hostname or IP. |
-| `DEPLOY_SSH_USER` | `example-user` | SSH user. |
+| `DEPLOY_SSH_USER` | required | SSH user. |
 | `DEPLOY_SSH_PORT` | `22` | SSH port. |
 | `CONTAINER_NAME` | `gh-smart-proxy` | Container name and default deployment directory suffix. |
-| `DEPLOY_DIR` | `<DEPLOY_BASE_DIR>/<CONTAINER_NAME>` | Directory on the deployment server. |
-| `DOCKERHUB_MIRROR` | `<DOCKERHUB_MIRROR>` | Docker Hub mirror used during image builds. |
+| `DEPLOY_BASE_DIR` | required | Base directory on the deployment server. The workflow deploys to `<DEPLOY_BASE_DIR>/<CONTAINER_NAME>`. |
+| `DOCKERHUB_MIRROR` | required by the included workflow | Docker Hub mirror used during image builds. Configure it in repository Variables. |
 
 ### Repository Secrets
 
@@ -180,8 +180,8 @@ The workflow can:
 ### One-Time Server Setup
 
 ```bash
-echo "<CI_TOKEN>" | docker login <REGISTRY_HOST> -u example-user --password-stdin
-mkdir -p <DEPLOY_BASE_DIR>/gh-smart-proxy
+echo "<CI_TOKEN>" | docker login <REGISTRY_HOST> -u <REGISTRY_USER> --password-stdin
+mkdir -p <DEPLOY_BASE_DIR>/<CONTAINER_NAME>
 ```
 
 You do not need to place a `.env` file on the server unless you want to override defaults manually.

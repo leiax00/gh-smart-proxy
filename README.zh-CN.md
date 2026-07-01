@@ -68,7 +68,7 @@ CONFIG_PATH=configs/config.yaml PROXY_SECRET=覆盖值 go run ./cmd/gh-smart-pro
 
 ## CI/CD 部署（Gitea Actions）
 
-参考 `reference-project`：runner 构建镜像推到 Gitea 内置 registry，再 SSH 到服务器用 `docker compose` 拉取重启。配置见 `.github/workflows/ci.yml`。
+runner 构建镜像推到 Gitea/GitHub 兼容 registry，再 SSH 到服务器用 `docker compose` 拉取重启。配置见 `.github/workflows/ci.yml`。
 
 - 手动触发（`workflow_dispatch`，可勾选 `run_build` / `run_deploy`）；先跑 `check-changes` 比对上次镜像的 commit。
 - 镜像 tag `:latest`，带 `org.opencontainers.image.revision` 标签；构建用 buildx + registry 缓存（`:buildcache`）。
@@ -83,14 +83,14 @@ CONFIG_PATH=configs/config.yaml PROXY_SECRET=覆盖值 go run ./cmd/gh-smart-pro
 
 | Variable | 默认 | 说明 |
 |---|---|---|
-| `REGISTRY_HOST` | `<REGISTRY_HOST>` | Gitea 外部域名（registry 同址；非标准端口要带上） |
+| `REGISTRY_HOST` | 必填 | 容器 registry 域名，在仓库 Variables 中配置 |
 | `GITEA_HOST` | 同 `REGISTRY_HOST` | 下载 compose 用的 Gitea API 地址（通常与 registry 同域，不同才设） |
 | `DEPLOY_HOST` | — | 部署服务器地址（必填） |
-| `DEPLOY_SSH_USER` | `example-user` | 部署 SSH 用户 |
+| `DEPLOY_SSH_USER` | 必填 | 部署 SSH 用户 |
 | `DEPLOY_SSH_PORT` | `22` | 部署 SSH 端口 |
 | `CONTAINER_NAME` | `gh-smart-proxy` | 容器名（也决定部署目录名） |
-| `DEPLOY_DIR` | `<DEPLOY_BASE_DIR>/<CONTAINER_NAME>` | 服务器上 compose 所在目录 |
-| `DOCKERHUB_MIRROR` | `<DOCKERHUB_MIRROR>` | 构建时拉基础镜像用的 Docker Hub 镜像 |
+| `DEPLOY_BASE_DIR` | 必填 | 服务器上的部署根目录；workflow 会部署到 `<DEPLOY_BASE_DIR>/<CONTAINER_NAME>` |
+| `DOCKERHUB_MIRROR` | 当前 workflow 必填 | 构建时拉基础镜像用的 Docker Hub 镜像，在仓库 Variables 中配置 |
 
 ### 3. 仓库 Secrets
 
@@ -104,17 +104,17 @@ CONFIG_PATH=configs/config.yaml PROXY_SECRET=覆盖值 go run ./cmd/gh-smart-pro
 
 ```bash
 # 登录 Gitea registry（用 CI_TOKEN）
-echo "<CI_TOKEN>" | docker login <REGISTRY_HOST> -u example-user --password-stdin
+echo "<CI_TOKEN>" | docker login <REGISTRY_HOST> -u <REGISTRY_USER> --password-stdin
 
 # 部署目录（compose 由 CI 下载、self 网络由 CI 装配、PROXY_SECRET 由 CI 从 Gitea secret 注入）
-mkdir -p <DEPLOY_BASE_DIR>/gh-smart-proxy
+mkdir -p <DEPLOY_BASE_DIR>/<CONTAINER_NAME>
 ```
 
-> 不用在服务器放 `.env`。`PROXY_SECRET` 走 Gitea secret（见上表），`IMAGE` 由 CI 自动算出，`ADDR`/`RATE_*` 用 compose 默认值。想覆盖默认值才在 `$DEPLOY_DIR/.env` 里加。
+> 不用在服务器放 `.env`。`PROXY_SECRET` 走 Gitea secret（见上表），`IMAGE` 由 CI 自动算出，`ADDR`/`RATE_*` 用 compose 默认值。想覆盖默认值才在 `<DEPLOY_BASE_DIR>/<CONTAINER_NAME>/.env` 里加。
 
 ### 5. 部署
 
-Gitea 仓库 → Actions → `CI` → Run workflow。流程构建推送 `:latest`，再 SSH 到 `$DEPLOY_DIR`：从 Gitea API 下载 `docker-compose.yml` + 写入 `docker-compose.override.yml`（注入 `self` 网络），把 `IMAGE` 和 `PROXY_SECRET`（Gitea secret）作为环境变量注入 → `docker compose pull && up -d`。
+Gitea 仓库 → Actions → `CI` → Run workflow。流程构建推送 `:latest`，再 SSH 到 `<DEPLOY_BASE_DIR>/<CONTAINER_NAME>`：从 Gitea API 下载 `docker-compose.yml` + 写入 `docker-compose.override.yml`（注入 `self` 网络），把 `IMAGE` 和 `PROXY_SECRET`（Gitea secret）作为环境变量注入 → `docker compose pull && up -d`。
 
 ## Web 页面
 

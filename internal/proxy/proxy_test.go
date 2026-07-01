@@ -16,34 +16,34 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 func TestParseTargetReleaseDownloadURL(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, "https://gh.example.com/example-user/https://github.com/example-user/ax-cli/releases/download/v0.1.0/ax-linux-x86_64", nil)
+	req, err := http.NewRequest(http.MethodGet, "http://192.0.2.10:8080/secret-token/https://github.com/owner/repo/releases/download/v1.0.0/file.tar.gz", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	target, err := parseTarget(req, "example-user", map[string]bool{"github.com": true})
+	target, err := parseTarget(req, "secret-token", map[string]bool{"github.com": true})
 	if err != nil {
 		t.Fatalf("parseTarget returned error: %v", err)
 	}
 
-	want := "https://github.com/example-user/ax-cli/releases/download/v0.1.0/ax-linux-x86_64"
+	want := "https://github.com/owner/repo/releases/download/v1.0.0/file.tar.gz"
 	if got := target.String(); got != want {
 		t.Fatalf("target = %q, want %q", got, want)
 	}
 }
 
 func TestParseTargetRestoresMergedHTTPSSlashes(t *testing.T) {
-	req, err := http.NewRequest(http.MethodGet, "https://gh.example.com/example-user/https:/github.com/example-user/ax-cli/releases/download/v0.1.0/ax-linux-x86_64", nil)
+	req, err := http.NewRequest(http.MethodGet, "http://192.0.2.10:8080/secret-token/https:/github.com/owner/repo/releases/download/v1.0.0/file.tar.gz", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	target, err := parseTarget(req, "example-user", map[string]bool{"github.com": true})
+	target, err := parseTarget(req, "secret-token", map[string]bool{"github.com": true})
 	if err != nil {
 		t.Fatalf("parseTarget returned error: %v", err)
 	}
 
-	want := "https://github.com/example-user/ax-cli/releases/download/v0.1.0/ax-linux-x86_64"
+	want := "https://github.com/owner/repo/releases/download/v1.0.0/file.tar.gz"
 	if got := target.String(); got != want {
 		t.Fatalf("target = %q, want %q", got, want)
 	}
@@ -52,11 +52,11 @@ func TestParseTargetRestoresMergedHTTPSSlashes(t *testing.T) {
 func TestHandleRedirectResponseRewritesProxyableGitHubLocation(t *testing.T) {
 	resp := redirectResponse(t, "https://github.com/owner/repo", "https://github.com/owner/repo/archive/refs/heads/main.zip")
 
-	if err := handleRedirectResponse(resp, "example-user", map[string]bool{"github.com": true}, nil); err != nil {
+	if err := handleRedirectResponse(resp, "secret-token", map[string]bool{"github.com": true}, nil); err != nil {
 		t.Fatalf("handleRedirectResponse returned error: %v", err)
 	}
 
-	want := "https://gh.example.com/example-user/https://github.com/owner/repo/archive/refs/heads/main.zip"
+	want := "http://192.0.2.10:8080/secret-token/https://github.com/owner/repo/archive/refs/heads/main.zip"
 	if got := resp.Header.Get("Location"); got != want {
 		t.Fatalf("Location = %q, want %q", got, want)
 	}
@@ -78,7 +78,7 @@ func TestHandleRedirectResponseFollowsReleaseAssetInPlace(t *testing.T) {
 		}, nil
 	})
 
-	if err := handleRedirectResponse(resp, "example-user", map[string]bool{"release-assets.githubusercontent.com": true}, transport); err != nil {
+	if err := handleRedirectResponse(resp, "secret-token", map[string]bool{"release-assets.githubusercontent.com": true}, transport); err != nil {
 		t.Fatalf("handleRedirectResponse returned error: %v", err)
 	}
 
@@ -97,7 +97,7 @@ func TestHandleRedirectResponseFollowsReleaseAssetInPlace(t *testing.T) {
 func TestHandleRedirectResponseIgnoresDisallowedHost(t *testing.T) {
 	resp := redirectResponse(t, "https://github.com/owner/repo/releases/download/v1/file", "https://example.com/file")
 
-	if err := handleRedirectResponse(resp, "example-user", map[string]bool{"github.com": true}, nil); err != nil {
+	if err := handleRedirectResponse(resp, "secret-token", map[string]bool{"github.com": true}, nil); err != nil {
 		t.Fatalf("handleRedirectResponse returned error: %v", err)
 	}
 
@@ -113,7 +113,7 @@ func redirectResponse(t *testing.T, requestURL, location string) *http.Response 
 		t.Fatal(err)
 	}
 	req := &http.Request{URL: reqURL, Header: make(http.Header)}
-	req = req.WithContext(context.WithValue(req.Context(), proxyBaseKey, "https://gh.example.com"))
+	req = req.WithContext(context.WithValue(req.Context(), proxyBaseKey, "http://192.0.2.10:8080"))
 
 	resp := &http.Response{
 		Status:     "302 Found",

@@ -1,7 +1,7 @@
 name: CI
 
-# 参考 reference-project 的 .github/workflows/ci.yml：手动触发，
-# runner 构建镜像推到 Gitea 内置 registry，再 SSH 到服务器 docker run 重启。
+# 手动触发：runner 构建镜像推到 Gitea/GitHub 兼容 registry，
+# 再 SSH 到服务器用 docker compose 拉取重启。
 on:
   workflow_dispatch:
     inputs:
@@ -31,7 +31,7 @@ jobs:
             exit 0
           fi
 
-          REGISTRY="${{ vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}"
+          REGISTRY="${{ vars.REGISTRY_HOST }}"
           IMAGE_REPO="${{ github.repository }}"
           AUTH=$(echo -n "${{ github.repository_owner }}:${{ secrets.CI_TOKEN }}" | base64 -w0)
 
@@ -72,12 +72,12 @@ jobs:
         with:
           buildkitd-config-inline: |
             [registry."docker.io"]
-              mirrors = ["${{ vars.DOCKERHUB_MIRROR || '<DOCKERHUB_MIRROR>' }}"]
+              mirrors = ["${{ vars.DOCKERHUB_MIRROR }}"]
 
       - name: Login to Gitea Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}
+          registry: ${{ vars.REGISTRY_HOST }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.CI_TOKEN }}
 
@@ -87,13 +87,13 @@ jobs:
           context: .
           file: deploy/Dockerfile
           push: true
-          tags: ${{ vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}/${{ github.repository }}:latest
+          tags: ${{ vars.REGISTRY_HOST }}/${{ github.repository }}:latest
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             USE_MIRROR=${{ vars.USE_MIRROR || 'true' }}
-          cache-from: type=registry,ref=${{ vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}/${{ github.repository }}:buildcache
-          cache-to: type=registry,ref=${{ vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}/${{ github.repository }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ vars.REGISTRY_HOST }}/${{ github.repository }}:buildcache
+          cache-to: type=registry,ref=${{ vars.REGISTRY_HOST }}/${{ github.repository }}:buildcache,mode=max
 
   deploy:
     needs: [check-changes, build]
@@ -110,17 +110,17 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ vars.DEPLOY_HOST }}
-          username: ${{ vars.DEPLOY_SSH_USER || 'example-user' }}
+          username: ${{ vars.DEPLOY_SSH_USER }}
           port: ${{ vars.DEPLOY_SSH_PORT || '22' }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: PROXY_SECRET
           script: |
-            REGISTRY="${{ vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}"
-            GITEA="${{ vars.GITEA_HOST || vars.REGISTRY_HOST || '<REGISTRY_HOST>' }}"
+            REGISTRY="${{ vars.REGISTRY_HOST }}"
+            GITEA="${{ vars.GITEA_HOST || vars.REGISTRY_HOST }}"
             REPO="${{ github.repository }}"
             NAME="${{ vars.CONTAINER_NAME || 'gh-smart-proxy' }}"
-            DEPLOY_DIR="${{ vars.DEPLOY_DIR }}"
-            DEPLOY_DIR="${DEPLOY_DIR:-<DEPLOY_BASE_DIR>/$NAME}"
+            DEPLOY_BASE_DIR="${{ vars.DEPLOY_BASE_DIR }}"
+            DEPLOY_DIR="$DEPLOY_BASE_DIR/$NAME"
             TOKEN="${{ secrets.CI_TOKEN }}"
             # IMAGE 由 CI 计算、PROXY_SECRET 由 envs 注入；compose 从 shell env 插值这两个
             export IMAGE="$REGISTRY/$REPO:latest"
