@@ -62,6 +62,7 @@ var homeTemplate = template.Must(template.New("home").Parse(`<!doctype html>
     .hint { font-size: 13px; color: #64748b; }
     .ok { color: #86efac; }
     .bad { color: #fca5a5; }
+    .section-label { margin-top: 22px; }
     .footer { margin-top: 18px; font-size: 13px; color: #64748b; }
     @media (max-width: 700px) { .row { grid-template-columns: 1fr; } h1 { font-size: 30px; } }
   </style>
@@ -90,13 +91,18 @@ var homeTemplate = template.Must(template.New("home").Parse(`<!doctype html>
       <label>代理地址</label>
       <pre id="out">等待输入...</pre>
 
+      <label class="section-label">jsDelivr CDN 地址</label>
+      <pre id="jsdelivr">等待输入 raw/blob/tree 文件地址...</pre>
+
       <label>Git clone 命令</label>
       <pre id="clone">等待输入仓库地址...</pre>
 
       <div class="buttons">
         <button onclick="copyProxy()">复制代理地址</button>
+        <button class="secondary" onclick="copyJsdelivr()">复制 jsDelivr</button>
         <button class="secondary" onclick="copyClone()">复制 git clone</button>
-        <button class="secondary" onclick="openProxy()">打开 / 下载</button>
+        <button class="secondary" onclick="openProxy()">代理打开 / 下载</button>
+        <button class="secondary" onclick="openJsdelivr()">jsDelivr 打开</button>
         <button class="secondary" onclick="forgetSecret()">清除记住的 Secret</button>
       </div>
 
@@ -108,6 +114,30 @@ var homeTemplate = template.Must(template.New("home").Parse(`<!doctype html>
 const allowed = new Set({{.AllowedHosts}});
 const $ = id => document.getElementById(id);
 function cleanBase(v) { return v.replace(/\/+$/, ''); }
+function splitRefAndPath(parts, start) {
+  if (parts.length <= start) return null;
+  if (parts[start] === 'refs' && parts.length > start + 2) {
+    return { ref: parts.slice(start, start + 3).join('/'), path: parts.slice(start + 3).join('/') };
+  }
+  return { ref: parts[start], path: parts.slice(start + 1).join('/') };
+}
+function jsdelivrURL(u) {
+  const parts = u.pathname.split('/').filter(Boolean);
+  let owner, repo, refAndPath;
+  if (u.hostname === 'raw.githubusercontent.com' && parts.length >= 4) {
+    owner = parts[0];
+    repo = parts[1];
+    refAndPath = splitRefAndPath(parts, 2);
+  } else if ((u.hostname === 'github.com' || u.hostname === 'www.github.com') && parts.length >= 5 && (parts[2] === 'blob' || parts[2] === 'tree')) {
+    owner = parts[0];
+    repo = parts[1];
+    refAndPath = splitRefAndPath(parts, 3);
+  } else {
+    return '';
+  }
+  if (!owner || !repo || !refAndPath || !refAndPath.ref) return '';
+  return 'https://cdn.jsdelivr.net/gh/' + owner + '/' + repo + '@' + refAndPath.ref + (refAndPath.path ? '/' + refAndPath.path : '/');
+}
 function build() {
   const secret = $('secret').value.trim();
   const base = cleanBase($('base').value.trim());
@@ -117,12 +147,14 @@ function build() {
   msg.className = 'hint';
   if (!base || !raw) {
     $('out').textContent = '等待输入...';
+    $('jsdelivr').textContent = '等待输入 raw/blob/tree 文件地址...';
     $('clone').textContent = '等待输入仓库地址...';
     return '';
   }
   let u;
   try { u = new URL(raw); } catch(e) {
     $('out').textContent = '原始地址不是合法 URL';
+    $('jsdelivr').textContent = '原始地址不是合法 URL';
     $('clone').textContent = '等待输入仓库地址...';
     msg.textContent = '请粘贴完整的 https://github.com/... 地址';
     msg.className = 'bad';
@@ -130,6 +162,7 @@ function build() {
   }
   if (u.protocol !== 'https:' || !allowed.has(u.hostname)) {
     $('out').textContent = '该域名不在代理白名单内';
+    $('jsdelivr').textContent = '该域名不在代理白名单内';
     $('clone').textContent = '等待输入仓库地址...';
     msg.textContent = '为了防止开放代理，只允许 GitHub 相关域名。';
     msg.className = 'bad';
@@ -137,7 +170,9 @@ function build() {
   }
   const secretPart = secret ? '/' + encodeURIComponent(secret) : '';
   const proxied = base + secretPart + '/' + raw;
+  const cdn = jsdelivrURL(u);
   $('out').textContent = proxied;
+  $('jsdelivr').textContent = cdn || '此地址不能转换为 jsDelivr。Release 附件和 archive zip 请使用代理地址，并让 Cloudflare 缓存代理响应。';
   if (u.hostname === 'github.com' || u.hostname === 'www.github.com') {
     let cloneURL = proxied;
     if (!cloneURL.endsWith('.git') && /^\/[^\/]+\/[^\/]+\/?$/.test(u.pathname)) cloneURL += '.git';
@@ -145,18 +180,25 @@ function build() {
   } else {
     $('clone').textContent = '这个地址不是仓库地址，通常用于 curl/wget/浏览器下载。';
   }
-  msg.textContent = '已生成。下载 Release / raw / archive 时，Cloudflare 命中缓存后能显著省 VPS 流量。';
+  msg.textContent = cdn ? '已生成代理地址和 jsDelivr 地址。' : '已生成代理地址。Release / archive 不适合转换到 jsDelivr，建议走代理并配合 Cloudflare 缓存。';
   msg.className = 'ok';
   return proxied;
 }
 async function copyText(t) {
-  if (!t || t.startsWith('等待') || t.includes('不是合法') || t.includes('不在代理')) return;
+  if (!t || t.startsWith('等待') || t.includes('不是合法') || t.includes('不在代理') || t.includes('不能转换')) return;
   try { await navigator.clipboard.writeText(t); $('msg').textContent = '已复制'; $('msg').className = 'ok'; }
   catch(e) { $('msg').textContent = '复制失败，可以手动复制上面的内容'; $('msg').className = 'bad'; }
 }
 function copyProxy() { copyText($('out').textContent); }
+function copyJsdelivr() { copyText($('jsdelivr').textContent); }
 function copyClone() { copyText($('clone').textContent); }
 function openProxy() { const u = build(); if (u) window.open(u, '_blank', 'noopener'); }
+function openJsdelivr() {
+  let raw;
+  try { raw = new URL($('raw').value.trim()); } catch(e) { return; }
+  const u = jsdelivrURL(raw);
+  if (u) window.open(u, '_blank', 'noopener');
+}
 const SECRET_KEY = 'gh-proxy-secret';
 try { if (localStorage[SECRET_KEY]) $('secret').value = localStorage[SECRET_KEY]; } catch(e) {}
 $('secret').addEventListener('input', () => { try { localStorage[SECRET_KEY] = $('secret').value; } catch(e) {} });

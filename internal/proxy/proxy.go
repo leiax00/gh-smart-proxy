@@ -6,6 +6,7 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -19,6 +20,10 @@ import (
 	"gh-smart-proxy/internal/httputil"
 )
 
+type ctxKey string
+
+const proxyBaseKey ctxKey = "proxyBase"
+
 // New returns an http.Handler that authenticates the request against secret,
 // parses the upstream target from the URL, and reverse-proxies it to a host in
 // allowedHosts.
@@ -31,6 +36,7 @@ func New(secret string, allowedHosts []string) http.Handler {
 	rp := &revproxy.ReverseProxy{
 		Director: func(r *http.Request) {},
 		ModifyResponse: func(resp *http.Response) error {
+			rewriteRedirectLocation(resp, secret, allowed)
 			applyCacheHeaders(resp)
 			httputil.StripHopHeaders(resp.Header)
 			return nil
@@ -60,6 +66,10 @@ func New(secret string, allowedHosts []string) http.Handler {
 
 		log.Printf("%s %s -> %s", httputil.ClientIP(r), r.Method, target.String())
 
+		originalHost := r.Host
+		proxyBase := httputil.PublicBaseURL(r)
+
+		r = r.WithContext(context.WithValue(r.Context(), proxyBaseKey, proxyBase))
 		r.URL = target
 		r.Host = target.Host
 		r.RequestURI = ""
@@ -71,11 +81,40 @@ func New(secret string, allowedHosts []string) http.Handler {
 		httputil.StripHopHeaders(r.Header)
 
 		r.Header.Set("Host", target.Host)
-		r.Header.Set("X-Forwarded-Host", r.Host)
+		r.Header.Set("X-Forwarded-Host", originalHost)
 		r.Header.Set("X-Forwarded-Proto", httputil.Scheme(r))
 
 		rp.ServeHTTP(w, r)
 	})
+}
+
+func rewriteRedirectLocation(resp *http.Response, secret string, allowed map[string]bool) {
+	location := resp.Header.Get("Location")
+	if location == "" || resp.StatusCode < 300 || resp.StatusCode >= 400 {
+		return
+	}
+
+	loc, err := url.Parse(location)
+	if err != nil {
+		return
+	}
+	if !loc.IsAbs() {
+		loc = resp.Request.URL.ResolveReference(loc)
+	}
+	if loc.Scheme != "https" || loc.Host == "" || !allowed[strings.ToLower(loc.Hostname())] {
+		return
+	}
+
+	proxyBase, _ := resp.Request.Context().Value(proxyBaseKey).(string)
+	if proxyBase == "" {
+		return
+	}
+
+	prefix := "/"
+	if secret != "" {
+		prefix += secret + "/"
+	}
+	resp.Header.Set("Location", proxyBase+prefix+loc.String())
 }
 
 // parseTarget validates the request against the secret prefix and parses the
