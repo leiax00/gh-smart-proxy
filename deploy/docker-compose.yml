@@ -1,6 +1,8 @@
 services:
   gh-smart-proxy:
-    build: .
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
     container_name: gh-smart-proxy
     restart: unless-stopped
     environment:

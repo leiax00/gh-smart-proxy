@@ -5,7 +5,43 @@
 ## 启动
 
 ```bash
-docker compose up -d --build
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+部署文件（`Dockerfile`、`docker-compose.yml`）都在 `deploy/` 下，与源码分开。本地直接跑：
+
+```bash
+PROXY_SECRET=你的长随机secret go run ./cmd/gh-smart-proxy
+```
+
+## 配置
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `PROXY_SECRET` | 必填 | URL 鉴权 secret，同时作为前缀出现在代理 URL 里 |
+| `ADDR` | `:8080` | 监听地址 |
+| `RATE_LIMIT` | `120` | 单个 IP 在窗口内最大请求数 |
+| `RATE_WINDOW_SECONDS` | `60` | 限流窗口（秒） |
+
+也可以在编译时把默认 secret 烧进二进制（运行时 `PROXY_SECRET` 仍优先）：
+
+```bash
+go build -ldflags="-X gh-smart-proxy/internal/config.Secret=your-secret" ./cmd/gh-smart-proxy
+```
+
+## 项目结构
+
+```
+├── cmd/gh-smart-proxy/     # 入口：只做配置加载 + 启动
+├── internal/
+│   ├── config/             # 配置：Config + Load()
+│   ├── httputil/           # 共享 HTTP 工具（ClientIP / Scheme / StripHopHeaders）
+│   ├── proxy/              # 反向代理：鉴权、目标解析、缓存头
+│   ├── ratelimit/          # 每 IP 限流
+│   ├── server/             # 组装路由 + *http.Server
+│   └── web/                # 内置 Web 页面
+├── deploy/                 # Dockerfile + docker-compose.yml
+└── go.mod
 ```
 
 ## Web 页面
