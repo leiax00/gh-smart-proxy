@@ -1,0 +1,15 @@
+# IDE
+.idea/
+.vscode/
+
+# Build output
+/gh-smart-proxy
+/gh-smart-proxy.exe
+/dist/
+
+# Local runtime
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

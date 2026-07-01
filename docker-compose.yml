@@ -1,0 +1,16 @@
+services:
+  gh-smart-proxy:
+    build: .
+    container_name: gh-smart-proxy
+    restart: unless-stopped
+    environment:
+      # 改成你自己的长随机 secret，不要用示例值
+      PROXY_SECRET: "change-me-long-random-secret"
+      ADDR: ":8080"
+      RATE_LIMIT: "120"
+      RATE_WINDOW_SECONDS: "60"
+    expose:
+      - "8080"
+    # 如果不用 NPM，临时测试可以打开 ports：
+    # ports:
+    #   - "8080:8080"
